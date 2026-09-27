@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">השינה של נווה</string>
+    <string name="widget_name">השינה של נווה</string>
+    <string name="widget_desc">ער/ישן, זמן מאז, תנומה הבאה וסיכום היום</string>
+</resources>
