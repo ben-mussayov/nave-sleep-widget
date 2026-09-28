@@ -6,7 +6,10 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
@@ -107,6 +110,7 @@ class SleepWidget : AppWidgetProvider() {
             v.setViewVisibility(R.id.next, View.GONE)
             v.setViewVisibility(R.id.next_chrono, View.GONE)
             v.setViewVisibility(R.id.flag, View.GONE)
+            v.setViewVisibility(R.id.phase, View.GONE)
 
             if (Feed.token(ctx).isEmpty()) {
                 v.setTextViewText(R.id.state, "לא מוגדר")
@@ -139,36 +143,51 @@ class SleepWidget : AppWidgetProvider() {
                 v.setChronometer(R.id.chrono, SystemClock.elapsedRealtime() - (now - since), null, true)
             }
 
-            if (state == "awake") {
-                val from = ms(j.optString("next_nap_from"))
+            // Phase: colour, label, gauge and countdown (podcast rules, computed by the feed).
+            val ph = j.optJSONObject("phase")
+            val color = runCatching { Color.parseColor(ph?.optString("color") ?: "") }.getOrDefault(Color.parseColor("#B0A69C"))
+            val label = ph?.optString("label").orEmpty()
+            if (ph != null && label.isNotEmpty()) {
+                v.setViewVisibility(R.id.phase, View.VISIBLE)
+                v.setTextViewText(R.id.phase, label)
+                v.setTextColor(R.id.phase, color)
+            }
+            val level = if (since != null) {
+                val el = (now - since) / 60000.0
+                when {
+                    state == "awake" -> el / (j.optDouble("window_min", 60.0) + 20.0)
+                    j.optString("kind") == "nap" -> el / 120.0
+                    else -> el / 750.0
+                }.coerceIn(0.0, 1.0)
+            } else 0.0
+            v.setProgressBar(R.id.gauge, 1000, (level * 1000).toInt(), false)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                v.setColorStateList(R.id.gauge, "setProgressTintList", ColorStateList.valueOf(color))
+            }
+            val target = ms(ph?.optString("target_at"))
+            if (target != null) {
                 v.setViewVisibility(R.id.next, View.VISIBLE)
-                if (from != null && from > now) {
-                    v.setTextViewText(R.id.next, "תנומה הבאה ${j.optString("next_nap_hm")} · בעוד")
-                    v.setViewVisibility(R.id.next_chrono, View.VISIBLE)
-                    v.setChronometer(R.id.next_chrono, SystemClock.elapsedRealtime() + (from - now), null, true)
+                v.setViewVisibility(R.id.next_chrono, View.VISIBLE)
+                v.setTextColor(R.id.next_chrono, color)
+                if (target > now) {
+                    v.setTextViewText(R.id.next, ph?.optString("target_label").orEmpty())
+                    v.setChronometer(R.id.next_chrono, SystemClock.elapsedRealtime() + (target - now), null, true)
                     v.setChronometerCountDown(R.id.next_chrono, true)
-                    scheduleEdge(ctx, from)
                 } else {
-                    v.setTextViewText(R.id.next, "תנומה עכשיו, לפי סימני עייפות")
+                    v.setTextViewText(R.id.next, "עבר מאז")
+                    v.setChronometer(R.id.next_chrono, SystemClock.elapsedRealtime() - (now - target), null, true)
+                    v.setChronometerCountDown(R.id.next_chrono, false)
                 }
             }
-
-            val fl = j.optJSONArray("flags")
-            val msgs = mutableListOf<String>()
-            if (fl != null) for (i in 0 until fl.length()) when (fl.optString(i)) {
-                "nap_2h" -> msgs += "התנומה מתקרבת לשעתיים"
-                "night_12h" -> msgs += "הלילה עבר 12.5 שעות"
-                "overdue" -> msgs += "עבר את חלון הערות"
-            }
-            if (msgs.isNotEmpty()) {
-                v.setViewVisibility(R.id.flag, View.VISIBLE)
-                v.setTextViewText(R.id.flag, msgs.joinToString(" · "))
-            }
+            ms(ph?.optString("next_change_at"))?.let { scheduleEdge(ctx, it) }
 
             val t = j.optJSONObject("today")
             val naps = t?.optInt("naps", 0) ?: 0
             val dayMin: Long = t?.optLong("day_sleep_min", 0L) ?: 0L
-            v.setTextViewText(R.id.today, "היום: $naps תנומות · ${dur(dayMin)}")
+            val pr = j.optJSONObject("progress")
+            val nightMin = if (pr != null && !pr.isNull("night_min")) pr.optLong("night_min", -1L) else -1L
+            val nightTxt = if (nightMin >= 0) "לילה ${dur(nightMin)}/12 ש' · " else ""
+            v.setTextViewText(R.id.today, "${nightTxt}תנומות $naps/4-6 · ${dur(dayMin)}")
 
             val at = Feed.cachedAt(ctx)
             val upd = if (at > 0) HM.format(Instant.ofEpochMilli(at)) else ""
