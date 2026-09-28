@@ -65,6 +65,13 @@
             android:textSize="15sp" />
 
         <Button
+            android:id="@+id/pin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="הוסף ווידג'ט למסך הבית" />
+
+        <Button
             android:id="@+id/open"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

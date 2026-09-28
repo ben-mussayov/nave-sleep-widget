@@ -1,6 +1,8 @@
 package il.nave.sleep
 
 import android.app.Activity
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -45,6 +47,14 @@ class MainActivity : Activity() {
                 SleepWidget.renderAll(this, j ?: Feed.cached(this), stale = j == null)
             }.start()
             SleepWidget.schedulePeriodic(this)
+        }
+
+        findViewById<Button>(R.id.pin).setOnClickListener {
+            val mgr = AppWidgetManager.getInstance(this)
+            val ok = mgr.isRequestPinAppWidgetSupported &&
+                mgr.requestPinAppWidget(ComponentName(this, SleepWidget::class.java), null, null)
+            status.text = if (ok) "אשרו בחלון שנפתח - הווידג'ט יתווסף למסך הבית."
+            else "המסך הזה לא תומך בהוספה אוטומטית. לחיצה ארוכה על מסך הבית ← ווידג'טים ← השינה של נווה."
         }
 
         findViewById<Button>(R.id.open).setOnClickListener {
