@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="320dp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/dialog_bg"
+    android:layoutDirection="rtl"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="שינת לילה?"
+        android:textColor="#2C2C2A"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:id="@+id/ask"
+        android:layout_width="match_parent"
+        android:layout_height="72dp"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/opt1"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="6dp"
+            android:layout_weight="1"
+            android:background="@drawable/btn_night"
+            android:gravity="center"
+            android:text="לילה"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/opt2"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:background="@drawable/btn_nap"
+            android:gravity="center"
+            android:text="תנומה"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/edit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:gravity="center"
+            android:layoutDirection="ltr"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/minus"
+                android:layout_width="76dp"
+                android:layout_height="match_parent"
+                android:background="@drawable/btn_step"
+                android:gravity="center"
+                android:text="−5"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/time"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="10dp"
+                android:layout_marginEnd="10dp"
+                android:layout_weight="1"
+                android:background="@drawable/field"
+                android:gravity="center"
+                android:text="--:--"
+                android:textColor="#2C2C2A"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/plus"
+                android:layout_width="76dp"
+                android:layout_height="match_parent"
+                android:background="@drawable/btn_step"
+                android:gravity="center"
+                android:text="+5"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/ok"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="2"
+                android:background="@drawable/btn_ok"
+                android:gravity="center"
+                android:text="✓  אישור"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/cancel"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_cancel"
+                android:gravity="center"
+                android:text="ביטול"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/msg"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:textColor="#A32D2D"
+        android:textSize="15sp"
+        android:visibility="gone" />
+</LinearLayout>

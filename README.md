@@ -1,9 +1,9 @@
 # Nave Sleep Widget
 
-Android home-screen widget for Nave's sleep: awake/asleep, time since (live), next nap window, today's naps.
+Android home-screen widget for Nave's sleep: big נרדם / התעורר buttons, a large live clock, colour that shifts with the wake window or nap length, tap the time to correct it. In the evening (19:00-07:00) it asks night or nap.
 
-- Data: read-only status feed (Supabase `sleep` function), keyed by a private per-parent link.
-- Logging stays in WhatsApp (the family bot).
+- Data: Supabase `sleep` function, keyed by a private per-parent link (read + sleep logging, approved 2026-10-22).
+- WhatsApp logging still works as a silent backup (the bot reacts ✓).
 - Build: every push to `main` builds `nave-sleep.apk` in GitHub Actions and publishes it as the latest Release.
 
 ## Install

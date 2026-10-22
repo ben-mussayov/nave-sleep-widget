@@ -7,13 +7,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.graphics.Color
-import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
 import androidx.work.Constraints
+import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -38,7 +37,7 @@ class SleepWidget : AppWidgetProvider() {
 
     override fun onDisabled(ctx: Context) {
         WorkManager.getInstance(ctx).cancelUniqueWork(PERIODIC)
-        WorkManager.getInstance(ctx).cancelUniqueWork(EDGE)
+        WorkManager.getInstance(ctx).cancelUniqueWork(TICK)
     }
 
     override fun onReceive(ctx: Context, intent: Intent) {
@@ -50,15 +49,15 @@ class SleepWidget : AppWidgetProvider() {
         const val ACTION_REFRESH = "il.nave.sleep.REFRESH"
         private const val PERIODIC = "sleep_periodic"
         private const val NOW = "sleep_now"
-        const val EDGE = "sleep_edge"
-        private val TZ: ZoneId = ZoneId.of("Asia/Jerusalem")
-        private val HM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(TZ)
+        private const val TICK = "sleep_tick"
+        val TZ: ZoneId = ZoneId.of("Asia/Jerusalem")
+        val HM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm").withZone(TZ)
 
         private val netOk = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
         fun schedulePeriodic(ctx: Context) {
             val req = PeriodicWorkRequestBuilder<SleepWorker>(15, TimeUnit.MINUTES).setConstraints(netOk).build()
-            WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, req)
+            WorkManager.getInstance(ctx).enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, req)
         }
 
         fun refreshNow(ctx: Context) {
@@ -66,132 +65,96 @@ class SleepWidget : AppWidgetProvider() {
             WorkManager.getInstance(ctx).enqueueUniqueWork(NOW, ExistingWorkPolicy.REPLACE, req)
         }
 
-        /** Re-render (and refetch) exactly when the next-nap window opens, so the widget switches text on time. */
-        fun scheduleEdge(ctx: Context, atMillis: Long) {
-            val delay = atMillis - System.currentTimeMillis()
-            if (delay <= 0) return
-            val req = OneTimeWorkRequestBuilder<SleepWorker>().setInitialDelay(delay + 5000, TimeUnit.MILLISECONDS).build()
-            WorkManager.getInstance(ctx).enqueueUniqueWork(EDGE, ExistingWorkPolicy.REPLACE, req)
+        /** Re-colour every few minutes from the cache (no network), so the gradient moves with time. */
+        private fun scheduleTick(ctx: Context) {
+            val req = OneTimeWorkRequestBuilder<SleepWorker>()
+                .setInitialDelay(3, TimeUnit.MINUTES)
+                .setInputData(Data.Builder().putBoolean("render_only", true).build()).build()
+            WorkManager.getInstance(ctx).enqueueUniqueWork(TICK, ExistingWorkPolicy.REPLACE, req)
         }
-
-        private fun dur(min: Long): String {
-            val m = if (min < 0) 0 else min
-            val h = m / 60
-            val r = m % 60
-            return when {
-                h == 0L -> "$r דק'"
-                r == 0L -> "$h ש'"
-                else -> "$h ש' $r דק'"
-            }
-        }
-
-        private fun ms(iso: String?): Long? = iso?.takeIf { it.isNotEmpty() && it != "null" }?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
 
         fun renderAll(ctx: Context, j: JSONObject?, stale: Boolean) {
             val mgr = AppWidgetManager.getInstance(ctx)
             val ids = mgr.getAppWidgetIds(ComponentName(ctx, SleepWidget::class.java))
             if (ids.isEmpty()) return
-            val v = build(ctx, j, stale)
-            mgr.updateAppWidget(ids, v)
+            mgr.updateAppWidget(ids, build(ctx, j, stale))
+            scheduleTick(ctx)
+        }
+
+        private fun action(ctx: Context, what: String, code: Int): PendingIntent {
+            val i = Intent(ctx, ActionActivity::class.java).putExtra("action", what)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+            return PendingIntent.getActivity(ctx, code, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         }
 
         private fun build(ctx: Context, j: JSONObject?, stale: Boolean): RemoteViews {
             val v = RemoteViews(ctx.packageName, R.layout.widget_sleep)
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-
-            // Tap body -> open the full page. Tap refresh -> refetch now.
-            val open = Intent(Intent.ACTION_VIEW, Uri.parse(if (Feed.token(ctx).isEmpty()) "" else Feed.pageUrl(ctx)))
-            val openApp = Intent(ctx, MainActivity::class.java)
-            v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(ctx, 1, if (Feed.token(ctx).isEmpty()) openApp else open, flags))
-            val refresh = Intent(ctx, SleepWidget::class.java).setAction(ACTION_REFRESH)
-            v.setOnClickPendingIntent(R.id.refresh, PendingIntent.getBroadcast(ctx, 2, refresh, flags))
-
-            v.setViewVisibility(R.id.chrono, View.GONE)
-            v.setViewVisibility(R.id.next, View.GONE)
-            v.setViewVisibility(R.id.next_chrono, View.GONE)
-            v.setViewVisibility(R.id.flag, View.GONE)
-            v.setViewVisibility(R.id.phase, View.GONE)
+            val refresh = PendingIntent.getBroadcast(ctx, 2, Intent(ctx, SleepWidget::class.java).setAction(ACTION_REFRESH), flags)
+            val openApp = PendingIntent.getActivity(ctx, 1, Intent(ctx, MainActivity::class.java), flags)
+            v.setOnClickPendingIntent(R.id.root, refresh)
 
             if (Feed.token(ctx).isEmpty()) {
                 v.setTextViewText(R.id.state, "לא מוגדר")
-                v.setTextViewText(R.id.today, "פתחו את האפליקציה והדביקו את הקישור")
-                v.setTextViewText(R.id.updated, "")
-                return v
-            }
-            if (j == null) {
-                v.setTextViewText(R.id.state, "טוען…")
-                v.setTextViewText(R.id.today, "")
-                v.setTextViewText(R.id.updated, "")
+                v.setTextViewText(R.id.since, "הגדרה")
+                v.setOnClickPendingIntent(R.id.since, openApp)
+                v.setOnClickPendingIntent(R.id.btn_sleep, openApp)
+                v.setOnClickPendingIntent(R.id.btn_wake, openApp)
+                v.setViewVisibility(R.id.gauge, View.INVISIBLE)
                 return v
             }
 
             val now = System.currentTimeMillis()
-            val state = j.optString("state")
-            val since = ms(j.optString("since"))
-            val sinceHm = j.optString("since_hm")
+            val look = Palette.look(j, now)
+            v.setInt(R.id.bg, "setColorFilter", look.bg)
+            v.setTextColor(R.id.state, look.fg)
+            v.setTextColor(R.id.chrono, look.fg)
 
-            if (state == "unknown" || since == null) {
-                v.setTextViewText(R.id.state, "אין עדיין רישום")
-            } else {
-                val label = when {
-                    state == "asleep" && j.optString("kind") == "night" -> "ישן שנת לילה מ-$sinceHm"
-                    state == "asleep" -> "ישן תנומה מ-$sinceHm"
-                    else -> "ער מ-$sinceHm"
-                }
-                v.setTextViewText(R.id.state, label)
+            val state = j?.optString("state") ?: ""
+            val kind = j?.optString("kind") ?: ""
+            val since = Palette.ms(j?.optString("since"))
+            v.setTextViewText(R.id.state, when {
+                j == null -> "טוען…"
+                state == "asleep" && kind == "night" -> "שנת לילה"
+                state == "asleep" -> "תנומה"
+                state == "awake" && kind == "night_waking" -> "ער בלילה"
+                state == "awake" -> "ער"
+                else -> "אין רישום"
+            })
+            if (since != null) {
                 v.setViewVisibility(R.id.chrono, View.VISIBLE)
                 v.setChronometer(R.id.chrono, SystemClock.elapsedRealtime() - (now - since), null, true)
+                v.setTextViewText(R.id.since, "מאז " + HM.format(Instant.ofEpochMilli(since)))
+                v.setOnClickPendingIntent(R.id.since, action(ctx, "edit", 10))
+            } else {
+                v.setChronometer(R.id.chrono, SystemClock.elapsedRealtime(), null, false)
+                v.setTextViewText(R.id.since, "--:--")
+                v.setOnClickPendingIntent(R.id.since, refresh)
             }
 
-            // Phase: colour, label, gauge and countdown (podcast rules, computed by the feed).
-            val ph = j.optJSONObject("phase")
-            val color = runCatching { Color.parseColor(ph?.optString("color") ?: "") }.getOrDefault(Color.parseColor("#B0A69C"))
-            val label = ph?.optString("label").orEmpty()
-            if (ph != null && label.isNotEmpty()) {
-                v.setViewVisibility(R.id.phase, View.VISIBLE)
-                v.setTextViewText(R.id.phase, label)
-                v.setTextColor(R.id.phase, color)
-            }
-            val level = if (since != null) {
-                val el = (now - since) / 60000.0
-                when {
-                    state == "awake" -> el / (j.optDouble("window_min", 60.0) + 20.0)
-                    j.optString("kind") == "nap" -> el / 120.0
-                    else -> el / 750.0
-                }.coerceIn(0.0, 1.0)
-            } else 0.0
-            v.setProgressBar(R.id.gauge, 1000, (level * 1000).toInt(), false)
+            v.setViewVisibility(R.id.gauge, if (look.showBar) View.VISIBLE else View.INVISIBLE)
+            v.setProgressBar(R.id.gauge, 1000, (look.level * 1000).toInt(), false)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                v.setColorStateList(R.id.gauge, "setProgressTintList", ColorStateList.valueOf(color))
+                v.setColorStateList(R.id.gauge, "setProgressTintList", ColorStateList.valueOf(look.bar))
+                v.setColorStateList(R.id.gauge, "setProgressBackgroundTintList", ColorStateList.valueOf(0x66FFFFFF))
             }
-            val target = ms(ph?.optString("target_at"))
-            if (target != null) {
-                v.setViewVisibility(R.id.next, View.VISIBLE)
-                v.setViewVisibility(R.id.next_chrono, View.VISIBLE)
-                v.setTextColor(R.id.next_chrono, color)
-                if (target > now) {
-                    v.setTextViewText(R.id.next, ph?.optString("target_label").orEmpty())
-                    v.setChronometer(R.id.next_chrono, SystemClock.elapsedRealtime() + (target - now), null, true)
-                    v.setChronometerCountDown(R.id.next_chrono, true)
-                } else {
-                    v.setTextViewText(R.id.next, "עבר מאז")
-                    v.setChronometer(R.id.next_chrono, SystemClock.elapsedRealtime() - (now - target), null, true)
-                    v.setChronometerCountDown(R.id.next_chrono, false)
-                }
-            }
-            ms(ph?.optString("next_change_at"))?.let { scheduleEdge(ctx, it) }
 
-            val t = j.optJSONObject("today")
-            val naps = t?.optInt("naps", 0) ?: 0
-            val dayMin: Long = t?.optLong("day_sleep_min", 0L) ?: 0L
-            val pr = j.optJSONObject("progress")
-            val nightMin = if (pr != null && !pr.isNull("night_min")) pr.optLong("night_min", -1L) else -1L
-            val nightTxt = if (nightMin >= 0) "לילה ${dur(nightMin)}/12 ש' · " else ""
-            v.setTextViewText(R.id.today, "${nightTxt}תנומות $naps/4-6 · ${dur(dayMin)}")
+            // Only the button that makes sense right now is active.
+            val asleep = state == "asleep"
+            val sleepOn = !asleep
+            val wakeOn = asleep
+            v.setInt(R.id.btn_sleep, "setBackgroundResource", if (sleepOn) R.drawable.btn_sleep else R.drawable.btn_sleep_off)
+            v.setInt(R.id.btn_wake, "setBackgroundResource", if (wakeOn) R.drawable.btn_wake else R.drawable.btn_wake_off)
+            v.setTextColor(R.id.btn_sleep, if (sleepOn) 0xFFFFFFFF.toInt() else 0xB3FFFFFF.toInt())
+            v.setTextColor(R.id.btn_wake, if (wakeOn) 0xFFFFFFFF.toInt() else 0xB3FFFFFF.toInt())
+            v.setOnClickPendingIntent(R.id.btn_sleep, if (sleepOn) action(ctx, "sleep", 11) else refresh)
+            v.setOnClickPendingIntent(R.id.btn_wake, if (wakeOn) action(ctx, "wake", 12) else refresh)
 
-            val at = Feed.cachedAt(ctx)
-            val upd = if (at > 0) HM.format(Instant.ofEpochMilli(at)) else ""
-            v.setTextViewText(R.id.updated, if (stale) "עודכן $upd · אין חיבור" else "עודכן $upd")
+            if (stale && Feed.cachedAt(ctx) > 0 && now - Feed.cachedAt(ctx) > 20 * 60000) {
+                v.setViewVisibility(R.id.updated, View.VISIBLE)
+                v.setTextColor(R.id.updated, look.fg)
+                v.setTextViewText(R.id.updated, "אין חיבור · עודכן " + HM.format(Instant.ofEpochMilli(Feed.cachedAt(ctx))))
+            } else v.setViewVisibility(R.id.updated, View.GONE)
             return v
         }
     }

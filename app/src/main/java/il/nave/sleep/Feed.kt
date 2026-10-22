@@ -55,6 +55,34 @@ object Feed {
         }
     }
 
+    /** Sends a logging action (sleep / wake / set_time). Returns the new status, or an error code in "error". Off the main thread. */
+    fun post(ctx: Context, body: JSONObject): JSONObject {
+        val t = token(ctx)
+        if (t.isEmpty()) return JSONObject().put("error", "no_token")
+        body.put("t", t)
+        if (test(ctx)) body.put("test", true)
+        val c = URL(FEED_URL).openConnection() as HttpURLConnection
+        return try {
+            c.connectTimeout = 10000
+            c.readTimeout = 15000
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.setRequestProperty("Content-Type", "application/json")
+            c.outputStream.use { it.write(body.toString().toByteArray()) }
+            val code = c.responseCode
+            val txt = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: "{}"
+            val j = runCatching { JSONObject(txt) }.getOrDefault(JSONObject())
+            if (code !in 200..299) return JSONObject().put("error", j.optString("error", "http_$code"))
+            val st = j.optJSONObject("status") ?: return JSONObject().put("error", "bad_response")
+            prefs(ctx).edit().putString("last", st.toString()).putLong("last_at", System.currentTimeMillis()).apply()
+            st
+        } catch (e: Exception) {
+            JSONObject().put("error", "offline")
+        } finally {
+            c.disconnect()
+        }
+    }
+
     /** Last good response, used when offline. */
     fun cached(ctx: Context): JSONObject? =
         prefs(ctx).getString("last", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
