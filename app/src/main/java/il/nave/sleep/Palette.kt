@@ -34,7 +34,7 @@ object Palette {
         val since = ms(j?.optString("scale_since")) ?: ms(j?.optString("since"))
         if (j == null || since == null || mode == "unknown") return Look(c("#F1EFE8"), c("#2C2C2A"), c("#888780"), 0.0, false)
         if (mode == "night_waking") return Look(c("#3C3489"), c("#EEEDFE"), c("#AFA9EC"), 0.0, false)
-        val arr = scale.optJSONArray("stops")
+        val arr = scale?.optJSONArray("stops")
         val stops = DoubleArray(3) { arr?.optDouble(it, 0.0) ?: 0.0 }
         val el = (now - since) / 60000.0
         val pal = when (mode) { "nap" -> NAP; "night" -> NIGHT; else -> AWAKE }
