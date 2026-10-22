@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.view.View
@@ -92,7 +93,12 @@ class SleepWidget : AppWidgetProvider() {
             val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             val refresh = PendingIntent.getBroadcast(ctx, 2, Intent(ctx, SleepWidget::class.java).setAction(ACTION_REFRESH), flags)
             val openApp = PendingIntent.getActivity(ctx, 1, Intent(ctx, MainActivity::class.java), flags)
-            v.setOnClickPendingIntent(R.id.root, refresh)
+            // Tap the card or the clock -> open the full page (like before). Buttons and the time chip have their own actions.
+            val page = if (Feed.token(ctx).isEmpty()) openApp
+                else PendingIntent.getActivity(ctx, 3, Intent(Intent.ACTION_VIEW, Uri.parse(Feed.pageUrl(ctx))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), flags)
+            v.setOnClickPendingIntent(R.id.root, page)
+            v.setOnClickPendingIntent(R.id.chrono, page)
+            v.setOnClickPendingIntent(R.id.state, page)
 
             if (Feed.token(ctx).isEmpty()) {
                 v.setTextViewText(R.id.state, "לא מוגדר")
