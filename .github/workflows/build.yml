@@ -24,7 +24,13 @@ jobs:
           gradle-version: "8.9"
 
       - name: Build release APK
-        run: gradle --no-daemon :app:assembleRelease
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! gradle --no-daemon :app:assembleRelease 2>&1 | tee build.log; then
+            grep -E "^e: |error:|What went wrong|^> " -A2 build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
 
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk nave-sleep.apk
